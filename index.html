@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#090b12" />
+  <title>Mixer Dice Table</title>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div><div class="eyebrow">MIXER DUNGEON MASTER</div><h1>3D Dice Table</h1></div>
+      <div class="top-actions">
+        <button id="admin-button" class="admin-button" type="button">🔒 ADMIN</button>
+        <div class="status-pill" id="status-pill">READY</div>
+      </div>
+    </header>
+    <main class="table-shell">
+      <div id="scene"></div>
+      <div class="result-card">
+        <div class="result-label" id="result-label">D20 RESULT</div>
+        <div class="result-number" id="result-number">—</div>
+        <div class="result-subtitle" id="result-subtitle">Roll the die to begin.</div>
+      </div>
+
+      <div class="connection-card" id="connection-card">
+        <div class="connection-title">DISCORD CONNECTION</div>
+        <div class="connection-stage" id="connection-stage">Starting…</div>
+        <div class="connection-detail" id="connection-detail">Waiting for the Activity to initialize.</div>
+        <div class="input-proof" id="input-proof">INPUT: waiting</div>
+        <button id="retry-button" class="retry-button" type="button" hidden>RETRY CONNECTION</button>
+      </div>
+
+      <section class="admin-panel" id="admin-panel" hidden>
+        <div class="admin-panel-header">
+          <div><div class="connection-title">ADMIN TEST MODE</div><strong>Local Dice Lab</strong></div>
+          <button id="admin-exit" class="admin-exit" type="button">EXIT TEST MODE</button>
+        </div>
+        <div class="admin-note">Local test rolls never resolve a campaign check or send a result to the Dungeon Master.</div>
+        <div class="die-grid" id="die-grid">
+          <button data-die="d4">D4</button><button data-die="d6">D6</button><button data-die="d8">D8</button>
+          <button data-die="d10">D10</button><button data-die="d12">D12</button><button data-die="d20" class="selected">D20</button>
+          <button data-die="d100" class="wide">D100</button>
+        </div>
+        <div class="admin-selected">Selected: <strong id="admin-selected-die">D20</strong></div>
+      </section>
+
+      <div class="controls">
+        <button id="roll-button" class="roll-button" type="button" tabindex="0"
+          onpointerdown="window.__mixerDiceInput && window.__mixerDiceInput(event,'inline-pointerdown')">
+          <span>🎲</span> ROLL D20
+        </button>
+        <div class="hint" id="roll-hint">The final upward face is the actual roll.</div>
+      </div>
+    </main>
+    <footer>Mixer Dice Table v0.5.4 • Admin Test Mode</footer>
+    <div id="burst" aria-hidden="true"></div>
+
+    <div class="admin-modal-backdrop" id="admin-modal" hidden>
+      <form class="admin-modal" id="admin-form">
+        <div class="connection-title">ADMIN ACCESS</div>
+        <h2>Enter Test Mode</h2>
+        <p>Enter the admin password to unlock local dice testing.</p>
+        <input id="admin-password" type="password" autocomplete="current-password" placeholder="Admin password" required />
+        <div id="admin-error" class="admin-error" aria-live="polite"></div>
+        <div class="admin-modal-actions">
+          <button type="button" id="admin-cancel" class="secondary-button">CANCEL</button>
+          <button type="submit" class="primary-button">UNLOCK</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

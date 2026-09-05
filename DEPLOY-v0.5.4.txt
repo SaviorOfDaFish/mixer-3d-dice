@@ -1,0 +1,29 @@
+MIXER 3D DICE v0.5.4 — ADMIN TEST MODE
+
+Railway service: Mixer 3D Dice
+
+Required variable:
+DICE_ADMIN_PASSWORD = (your chosen admin password)
+
+Existing variables remain unchanged:
+VITE_DISCORD_CLIENT_ID
+DISCORD_CLIENT_SECRET
+BOT_API_URL
+DICE_BRIDGE_SECRET
+
+Deploy this entire project to the existing Mixer 3D Dice service.
+Do NOT deploy it to the Dungeon Master bot service.
+
+Admin flow:
+1. Open the Dice Activity.
+2. Click ADMIN.
+3. Enter the password.
+4. Select D4, D6, D8, D10, D12, D20, or D100.
+5. Local test rolls do not require a pending Discord roll and never submit to campaign data.
+6. Click EXIT TEST MODE to return to normal Discord bridge operation.
+
+Security:
+- Password validation is server-side.
+- The password is not embedded in frontend JavaScript.
+- Admin session tokens expire after 30 minutes.
+- Five failed password attempts cause a 60-second lockout per IP.
