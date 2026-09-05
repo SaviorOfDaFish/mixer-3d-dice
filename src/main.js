@@ -539,6 +539,17 @@ staticBox(0,-.3,0,W,.6,D,0x151a20); staticBox(0,WH/2,-(D/2+WT/2),W+WT*2,WH,WT); 
 const felt=new THREE.Mesh(new THREE.PlaneGeometry(W-.65,D-.65),new THREE.MeshStandardMaterial({color:0x101c20,roughness:1})); felt.rotation.x=-Math.PI/2; felt.position.y=.012; felt.receiveShadow=true; scene.add(felt);
 const grid=new THREE.GridHelper(10,20,0x243a48,0x17242d);grid.position.y=.02;grid.material.transparent=true;grid.material.opacity=.26;scene.add(grid);
 
+// v0.6.1: restore the magical halo used by the animation loop.
+// v0.6.0 referenced `halo` every frame but never created it, which stopped
+// rendering before the first frame and left the dice tray empty.
+const halo=new THREE.Mesh(
+  new THREE.CircleGeometry(1.95,64),
+  new THREE.MeshBasicMaterial({color:0x2b66b5,transparent:true,opacity:.10,depthWrite:false})
+);
+halo.rotation.x=-Math.PI/2;
+halo.position.y=.035;
+scene.add(halo);
+
 const R=1.42;
 const UP=new THREE.Vector3(0,1,0);
 let rolling=false,settle=0,start=0,focusResult=false;
@@ -930,7 +941,7 @@ function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.
   const avg=activeDice.length?activeDice.reduce((a,d)=>a.add(new THREE.Vector3(d.body.position.x,d.body.position.y,d.body.position.z)),new THREE.Vector3()).multiplyScalar(1/activeDice.length):new THREE.Vector3();halo.position.x=avg.x;halo.position.z=avg.z;halo.material.opacity=.09+Math.sin(performance.now()*.0025)*.02;
   const desired=focusResult?focusCam:defaultCam;camera.position.lerp(desired,1-Math.pow(.001,dt));const target=focusResult?new THREE.Vector3(avg.x,Math.max(.8,avg.y+.15),avg.z):new THREE.Vector3(0,.7,0);lookTarget.lerp(target,1-Math.pow(.0025,dt));camera.lookAt(lookTarget);renderer.render(scene,camera)}
 setActiveDice("d20");loop();
-console.log('[Mixer Dice] v0.6.0 full physical dice set ready');
+console.log('[Mixer Dice] v0.6.1 dice render hotfix ready');
 
 // Lock the control before the first browser paint in Discord Activity mode.
 if(isDiscordActivity){
