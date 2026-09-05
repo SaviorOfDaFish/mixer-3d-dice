@@ -184,3 +184,11 @@ Admin Test Mode now swaps the actual 3D geometry and Cannon physics body for D4,
 - The percentile tens die is visibly labeled **10, 20, 30, 40, 50, 60, 70, 80, 90, 100**.
 - The ones die remains **0-9**.
 - On the percentile die, the visible **100** face represents the traditional **00** face for combined D100 math; 100 + 0 resolves to 100.
+
+## v0.6.4 — Containment + Arcane Backdrop
+
+- Added four tall, invisible Cannon physics safety walls directly above the visible tray rim.
+- Dice can bounce high but cannot leave the dice box.
+- Safety walls are physics-only and never render over the table art.
+- Added a dark arcane/cosmic full-page backdrop behind the 3D table and UI.
+- Preserves v0.6.3 true D10 geometry and D100 percentile pair.
