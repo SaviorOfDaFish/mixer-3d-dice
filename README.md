@@ -162,8 +162,17 @@ which die counts. The working v0.5.2 multiplayer/voice-channel fix is preserved.
 Admin Test Mode now swaps the actual 3D geometry and Cannon physics body for D4, D6, D8, D10, D12, and D20. D100 rolls two physical D10 percentile dice simultaneously (tens + ones, with 00 + 0 = 100). Admin rolls remain local-only and never submit to the campaign. Normal Discord campaign rolls remain D20 and preserve v0.5.3 advantage/disadvantage behavior.
 
 
-## v0.6.1 — Dice Render Hotfix
+## v0.6.2 — Dice Render Hotfix
 
 - Restored the missing Three.js halo object referenced by the render loop.
 - Fixes the blank dice tray introduced in v0.6.0.
 - Physical D4/D6/D8/D10/D12/D20/D100 selection remains unchanged.
+
+
+## v0.6.2 — Percentile D10 shape update
+
+- D10 geometry is stretched into a more recognizable classic pentagonal-trapezohedron RPG d10 silhouette.
+- D100 uses two physical d10-shaped dice.
+- The percentile tens die is visibly labeled **10, 20, 30, 40, 50, 60, 70, 80, 90, 100**.
+- The ones die remains **0-9**.
+- On the percentile die, the visible **100** face represents the traditional **00** face for combined D100 math; 100 + 0 resolves to 100.
