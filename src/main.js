@@ -519,11 +519,12 @@ async function submitActivityRoll(result,rolls=[result]){
 
 
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x090b11);
+// v0.6.5: transparent WebGL canvas so the supplied fantasy background can show behind the table.
+scene.background=null;
 scene.fog=new THREE.FogExp2(0x090b11,.025);
 const camera=new THREE.PerspectiveCamera(42,1,.1,100);
 camera.position.set(0,8.6,12.5); camera.lookAt(0,.7,0);
-const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.shadowMap.enabled=true; renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; host.appendChild(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0x718ab5,0x16100d,1.1));
 const key=new THREE.DirectionalLight(0xd9e7ff,3); key.position.set(-4,10,5); key.castShadow=true; key.shadow.mapSize.set(2048,2048); scene.add(key);
@@ -576,7 +577,18 @@ const R=1.42;
 const UP=new THREE.Vector3(0,1,0);
 let rolling=false,settle=0,start=0,focusResult=false;
 const defaultCam=new THREE.Vector3(0,8.6,12.5);
-const focusCam=new THREE.Vector3(0,8.5,5.5);
+const focusCam=new THREE.Vector3(0,17.5,.01);
+const defaultCameraUp=new THREE.Vector3(0,1,0);
+const topDownCameraUp=new THREE.Vector3(0,0,-1);
+function updateTopDownCameraHeight(){
+  const aspect=Math.max(.35,camera.aspect||1);
+  const halfDepth=(D+WT*2)/2;
+  const halfWidth=(W+WT*2)/2;
+  const requiredHalfVertical=Math.max(halfDepth,halfWidth/aspect);
+  const halfFov=THREE.MathUtils.degToRad(camera.fov/2);
+  const height=(requiredHalfVertical/Math.tan(halfFov))*1.16;
+  focusCam.set(0,Math.max(13,height),.01);
+}
 const lookTarget=new THREE.Vector3(0,.7,0);
 let activeDice=[];
 let activeDieType="d20";
@@ -769,9 +781,9 @@ function setActiveDice(type="d20"){
   if(activeDieType===type && activeDice.length) return;
   activeDice.forEach(disposeDie);activeDice=[];activeDieType=type;
   if(type==="d100"){
-    // Percentile pair: the tens die is visibly labeled 10-100, while 100
-    // represents the traditional 00 face for percentile math.
-    activeDice.push(createPhysicalDie("d10",[10,20,30,40,50,60,70,80,90,100],.86));
+    // Percentile pair: traditional tens die is visibly labeled 00-90,
+    // paired with a ones die labeled 0-9.
+    activeDice.push(createPhysicalDie("d10",["00",10,20,30,40,50,60,70,80,90],.86));
     activeDice.push(createPhysicalDie("d10",[0,1,2,3,4,5,6,7,8,9],.86));
     activeDice[0].mesh.position.x=-1.2;activeDice[1].mesh.position.x=1.2;
     activeDice[0].body.position.set(-1.2,2.6,0);activeDice[1].body.position.set(1.2,2.6,0);
@@ -793,10 +805,10 @@ function finish(){
   if(adminTestMode){
     if(selectedAdminDie==="d100"){
       const tens=readDie(activeDice[0]),ones=readDie(activeDice[1]);
-      const tensBase=tens.number===100?0:tens.number;
-      const result=(tens.number===100&&ones.number===0)?100:tensBase+ones.number;
+      const tensBase=tens.number==="00"?0:Number(tens.number);
+      const result=(tens.number==="00"&&ones.number===0)?100:tensBase+ones.number;
       resultEl.textContent=result;button.disabled=false;button.innerHTML='<span>🎲</span> TEST LOCAL D100 AGAIN';status.textContent="ADMIN RESULT";
-      const tensDisplay=tens.number===100?"100 (00)":String(tens.number);
+      const tensDisplay=String(tens.number).padStart(2,"0");
       subtitle.textContent=`D100 • percentile ${tensDisplay} + ${ones.number} • campaign submission OFF`;
       showInputProof("ADMIN TEST FINISHED",`d100=${result}`);
       window.dispatchEvent(new CustomEvent('mixer-dice-test-result',{detail:{die:'d100',result,tens:tens.number,ones:ones.number,localOnly:true}}));return;
@@ -979,14 +991,21 @@ retryButton.addEventListener("click",async(event)=>{
 });
 
 const clock=new THREE.Clock();let acc=0;const step=1/120;
-function resize(){renderer.setSize(host.clientWidth,host.clientHeight,false);camera.aspect=host.clientWidth/Math.max(1,host.clientHeight);camera.updateProjectionMatrix()}new ResizeObserver(resize).observe(host);resize();
+function resize(){renderer.setSize(host.clientWidth,host.clientHeight,false);camera.aspect=host.clientWidth/Math.max(1,host.clientHeight);camera.updateProjectionMatrix();updateTopDownCameraHeight()}new ResizeObserver(resize).observe(host);resize();
 function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.05);acc+=dt;let n=0;while(acc>=step&&n<8){world.step(step);acc-=step;n++}
   activeDice.forEach(d=>{d.mesh.position.set(d.body.position.x,d.body.position.y,d.body.position.z);d.mesh.quaternion.set(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w)});
   if(rolling){const elapsed=performance.now()-start;const settled=activeDice.every(d=>d.body.velocity.length()<.18&&d.body.angularVelocity.length()<.2);if(settled&&elapsed>900)settle+=dt;else settle=0;if(settle>.78||elapsed>12000)finish()}
   const avg=activeDice.length?activeDice.reduce((a,d)=>a.add(new THREE.Vector3(d.body.position.x,d.body.position.y,d.body.position.z)),new THREE.Vector3()).multiplyScalar(1/activeDice.length):new THREE.Vector3();halo.position.x=avg.x;halo.position.z=avg.z;halo.material.opacity=.09+Math.sin(performance.now()*.0025)*.02;
-  const desired=focusResult?focusCam:defaultCam;camera.position.lerp(desired,1-Math.pow(.001,dt));const target=focusResult?new THREE.Vector3(avg.x,Math.max(.8,avg.y+.15),avg.z):new THREE.Vector3(0,.7,0);lookTarget.lerp(target,1-Math.pow(.0025,dt));camera.lookAt(lookTarget);renderer.render(scene,camera)}
+  const desired=focusResult?focusCam:defaultCam;
+  camera.position.lerp(desired,1-Math.pow(.001,dt));
+  // Result view is a true bird's-eye view centered on the entire tray, not a close-up on one die.
+  camera.up.copy(focusResult?topDownCameraUp:defaultCameraUp);
+  const target=focusResult?new THREE.Vector3(0,0,0):new THREE.Vector3(0,.7,0);
+  lookTarget.lerp(target,1-Math.pow(.0025,dt));
+  camera.lookAt(lookTarget);
+  renderer.render(scene,camera)}
 setActiveDice("d20");loop();
-console.log('[Mixer Dice] v0.6.1 dice render hotfix ready');
+console.log('[Mixer Dice] v0.6.5 top-down percentile/background ready');
 
 // Lock the control before the first browser paint in Discord Activity mode.
 if(isDiscordActivity){

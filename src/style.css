@@ -192,3 +192,43 @@ body::after{
 .topbar h1{
   text-shadow:0 2px 20px rgba(0,0,0,.7);
 }
+
+/* v0.6.5 — supplied Monster Hunt background */
+html,body{
+  background:#05050a;
+}
+body{
+  position:relative;
+  isolation:isolate;
+  background-image:
+    linear-gradient(rgba(4,5,10,.42),rgba(4,5,10,.58)),
+    url('/dice-table-background.png');
+  background-size:cover;
+  background-position:center center;
+  background-repeat:no-repeat;
+  background-attachment:fixed;
+}
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:-2;
+  pointer-events:none;
+  background:radial-gradient(circle at 50% 42%,transparent 15%,rgba(2,3,7,.38) 100%);
+  opacity:1;
+}
+body::after{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:-1;
+  pointer-events:none;
+  background:linear-gradient(180deg,rgba(4,5,10,.08),rgba(4,5,10,.34));
+}
+#app{
+  background:rgba(3,5,10,.10);
+}
+.table-shell{
+  background:rgba(4,7,13,.66);
+  backdrop-filter:blur(2px);
+}
