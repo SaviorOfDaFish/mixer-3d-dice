@@ -132,6 +132,7 @@ function updateAdminDieUI(){
   dieGrid?.querySelectorAll("button[data-die]").forEach((el)=>{
     el.classList.toggle("selected",el.dataset.die===selectedAdminDie);
   });
+  setActiveDice(selectedAdminDie);
 }
 
 function enterAdminMode(){
@@ -156,6 +157,7 @@ async function exitAdminMode(){
   adminButton.textContent="🔒 ADMIN";
   adminButton.classList.remove("active");
   resultLabel.textContent="D20 RESULT";
+  setActiveDice("d20");
   rollHint.textContent="The final upward face is the actual roll.";
   resultEl.textContent="—";
   if(isDiscordActivity){
@@ -537,360 +539,227 @@ staticBox(0,-.3,0,W,.6,D,0x151a20); staticBox(0,WH/2,-(D/2+WT/2),W+WT*2,WH,WT); 
 const felt=new THREE.Mesh(new THREE.PlaneGeometry(W-.65,D-.65),new THREE.MeshStandardMaterial({color:0x101c20,roughness:1})); felt.rotation.x=-Math.PI/2; felt.position.y=.012; felt.receiveShadow=true; scene.add(felt);
 const grid=new THREE.GridHelper(10,20,0x243a48,0x17242d);grid.position.y=.02;grid.material.transparent=true;grid.material.opacity=.26;scene.add(grid);
 
-const P=(1+Math.sqrt(5))/2,R=1.42;
-const rawV=[[-1,P,0],[1,P,0],[-1,-P,0],[1,-P,0],[0,-1,P],[0,1,P],[0,-1,-P],[0,1,-P],[P,0,-1],[P,0,1],[-P,0,-1],[-P,0,1]];
-const rawF=[[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
-const verts=rawV.map(v=>{const t=new THREE.Vector3(...v).normalize().multiplyScalar(R);return[t.x,t.y,t.z]});
-const faces=rawF.map(f=>{const [a,b,c]=f.map(i=>new THREE.Vector3(...verts[i]));const n=new THREE.Vector3().subVectors(b,a).cross(new THREE.Vector3().subVectors(c,a)).normalize();const center=a.clone().add(b).add(c).multiplyScalar(1/3);return n.dot(center)<0?[f[0],f[2],f[1]]:[...f]});
-const normals=faces.map(f=>{const [a,b,c]=f.map(i=>new THREE.Vector3(...verts[i]));return new THREE.Vector3().subVectors(b,a).cross(new THREE.Vector3().subVectors(c,a)).normalize()});
-function numbering(){const nums=new Array(20);const open=new Set([...Array(20).keys()]);const pairs=[[20,1],[19,2],[18,3],[17,4],[16,5],[15,6],[14,7],[13,8],[12,9],[11,10]];for(const [hi,lo] of pairs){const first=[...open][0];open.delete(first);let opp,best=Infinity;for(const c of open){const d=normals[first].dot(normals[c]);if(d<best){best=d;opp=c}}open.delete(opp);nums[first]=hi;nums[opp]=lo}return nums} const numbers=numbering();
+const R=1.42;
+const UP=new THREE.Vector3(0,1,0);
+let rolling=false,settle=0,start=0,focusResult=false;
+const defaultCam=new THREE.Vector3(0,8.6,12.5);
+const focusCam=new THREE.Vector3(0,8.5,5.5);
+const lookTarget=new THREE.Vector3(0,.7,0);
+let activeDice=[];
+let activeDieType="d20";
+
+function orientFaces(vertices,faces){
+  return faces.map(face=>{
+    if(face.length<3) return face.slice();
+    const a=new THREE.Vector3(...vertices[face[0]]);
+    const b=new THREE.Vector3(...vertices[face[1]]);
+    const c=new THREE.Vector3(...vertices[face[2]]);
+    const normal=new THREE.Vector3().subVectors(b,a).cross(new THREE.Vector3().subVectors(c,a));
+    const center=face.reduce((acc,i)=>acc.add(new THREE.Vector3(...vertices[i])),new THREE.Vector3()).multiplyScalar(1/face.length);
+    return normal.dot(center)<0 ? [face[0],...face.slice(1).reverse()] : face.slice();
+  });
+}
+
+function scaleVertices(vertices,radius=R){
+  const max=Math.max(...vertices.map(v=>Math.hypot(...v)));
+  return vertices.map(v=>v.map(n=>n/max*radius));
+}
+
+function faceNormals(vertices,faces){
+  return faces.map(face=>{
+    const a=new THREE.Vector3(...vertices[face[0]]),b=new THREE.Vector3(...vertices[face[1]]),c=new THREE.Vector3(...vertices[face[2]]);
+    return new THREE.Vector3().subVectors(b,a).cross(new THREE.Vector3().subVectors(c,a)).normalize();
+  });
+}
+
+function dualPolyhedron(primalVertices,primalFaces,radius=R){
+  const pv=primalVertices.map(v=>new THREE.Vector3(...v));
+  const pf=orientFaces(primalVertices,primalFaces);
+  const dualVerts=pf.map(face=>{
+    const center=face.reduce((a,i)=>a.add(pv[i]),new THREE.Vector3()).multiplyScalar(1/face.length);
+    return center.normalize().toArray();
+  });
+  const dualFaces=pv.map((vertex,vi)=>{
+    const incident=[];
+    pf.forEach((face,fi)=>{ if(face.includes(vi)) incident.push(fi); });
+    const axis=vertex.clone().normalize();
+    let ref=new THREE.Vector3(0,1,0);
+    if(Math.abs(axis.dot(ref))>.9) ref.set(1,0,0);
+    const u=ref.clone().addScaledVector(axis,-ref.dot(axis)).normalize();
+    const v=new THREE.Vector3().crossVectors(axis,u).normalize();
+    incident.sort((a,b)=>{
+      const pa=new THREE.Vector3(...dualVerts[a]).normalize();
+      const pb=new THREE.Vector3(...dualVerts[b]).normalize();
+      const aa=Math.atan2(pa.dot(v),pa.dot(u));
+      const ab=Math.atan2(pb.dot(v),pb.dot(u));
+      return aa-ab;
+    });
+    return incident;
+  });
+  const scaled=scaleVertices(dualVerts,radius);
+  return {vertices:scaled,faces:orientFaces(scaled,dualFaces)};
+}
+
+function makeD20(){
+  const P=(1+Math.sqrt(5))/2;
+  const rawV=[[-1,P,0],[1,P,0],[-1,-P,0],[1,-P,0],[0,-1,P],[0,1,P],[0,-1,-P],[0,1,-P],[P,0,-1],[P,0,1],[-P,0,-1],[-P,0,1]];
+  const rawF=[[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
+  const vertices=scaleVertices(rawV,R),faces=orientFaces(vertices,rawF),normals=faceNormals(vertices,faces);
+  const nums=new Array(20),open=new Set([...Array(20).keys()]);
+  for(const [hi,lo] of [[20,1],[19,2],[18,3],[17,4],[16,5],[15,6],[14,7],[13,8],[12,9],[11,10]]){
+    const first=[...open][0];open.delete(first);let opp,best=Infinity;
+    for(const c of open){const d=normals[first].dot(normals[c]);if(d<best){best=d;opp=c}}
+    open.delete(opp);nums[first]=hi;nums[opp]=lo;
+  }
+  return {vertices,faces,values:nums,labelSize:1.18};
+}
+
+function makeD4(){
+  const vertices=scaleVertices([[1,1,1],[-1,-1,1],[-1,1,-1],[1,-1,-1]],R);
+  const faces=orientFaces(vertices,[[0,2,1],[0,1,3],[0,3,2],[1,2,3]]);
+  return {vertices,faces,values:[1,2,3,4],labelSize:1.05};
+}
+
+function makeD6(){
+  const vertices=scaleVertices([[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]],R*1.02);
+  const faces=orientFaces(vertices,[[0,3,2,1],[4,5,6,7],[0,4,7,3],[1,2,6,5],[3,7,6,2],[0,1,5,4]]);
+  return {vertices,faces,values:[1,6,2,5,3,4],labelSize:1.18};
+}
+
+function makeD8(){
+  const vertices=scaleVertices([[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]],R);
+  const faces=orientFaces(vertices,[[2,0,4],[2,4,1],[2,1,5],[2,5,0],[3,4,0],[3,1,4],[3,5,1],[3,0,5]]);
+  return {vertices,faces,values:[1,2,3,4,5,6,7,8],labelSize:.92};
+}
+
+function makeD10(){
+  const top=[],bottom=[],h=.62;
+  for(let i=0;i<5;i++){
+    const a=2*Math.PI*i/5;
+    top.push([Math.cos(a),h,Math.sin(a)]);
+    const b=a+Math.PI/5;
+    bottom.push([Math.cos(b),-h,Math.sin(b)]);
+  }
+  const vertices=[...top,...bottom];
+  const faces=[[0,1,2,3,4],[9,8,7,6,5]];
+  for(let i=0;i<5;i++){
+    const ni=(i+1)%5,pi=(i+4)%5;
+    faces.push([i,5+i,5+pi]);
+    faces.push([i,ni,5+i]);
+  }
+  const dual=dualPolyhedron(vertices,faces,R);
+  return {...dual,values:[0,1,2,3,4,5,6,7,8,9],labelSize:.82};
+}
+
+function makeD12(){
+  const ico=makeD20();
+  const dual=dualPolyhedron(ico.vertices,ico.faces,R);
+  return {...dual,values:[1,2,3,4,5,6,7,8,9,10,11,12],labelSize:.78};
+}
+
+function polyFor(type){
+  if(type==="d4") return makeD4();
+  if(type==="d6") return makeD6();
+  if(type==="d8") return makeD8();
+  if(type==="d10"||type==="d100") return makeD10();
+  if(type==="d12") return makeD12();
+  return makeD20();
+}
 
 function numberTexture(n){
-  const c=document.createElement('canvas');
-  c.width=c.height=512;
-  const x=c.getContext('2d');
-  x.clearRect(0,0,512,512);
-
-  x.textAlign='center';
-  x.textBaseline='middle';
-
-  // v0.3.2: much larger, high-contrast numbers.
-  const fontSize=n>=10?190:222;
-  x.font=`700 ${fontSize}px Georgia`;
-
-  // Deep engraved shadow.
-  x.shadowColor='rgba(0,0,0,.98)';
-  x.shadowBlur=20;
-  x.shadowOffsetY=8;
-  x.fillStyle='#070b13';
-  x.fillText(String(n),256,258);
-
-  // Bright silver fill.
-  x.shadowBlur=8;
-  x.shadowOffsetY=1;
-  x.fillStyle='#f3f7ff';
-  x.fillText(String(n),256,250);
-
-  // Fine metallic highlight.
-  x.shadowBlur=0;
-  x.lineWidth=4;
-  x.strokeStyle='rgba(170,205,255,.82)';
-  x.strokeText(String(n),256,250);
-
-  // Standard 6/9 orientation marker.
-  if(n===6||n===9){
-    x.fillStyle='#eef5ff';
-    x.fillRect(207,367,98,9);
-  }
-
-  const t=new THREE.CanvasTexture(c);
-  t.colorSpace=THREE.SRGBColorSpace;
-  t.anisotropy=renderer.capabilities.getMaxAnisotropy();
-  return t;
+  const c=document.createElement('canvas');c.width=c.height=512;const x=c.getContext('2d');x.clearRect(0,0,512,512);
+  x.textAlign='center';x.textBaseline='middle';const text=String(n);const fontSize=text.length>=2?180:225;x.font=`700 ${fontSize}px Georgia`;
+  x.shadowColor='rgba(0,0,0,.98)';x.shadowBlur=20;x.shadowOffsetY=8;x.fillStyle='#070b13';x.fillText(text,256,258);
+  x.shadowBlur=8;x.shadowOffsetY=1;x.fillStyle='#f3f7ff';x.fillText(text,256,250);
+  x.shadowBlur=0;x.lineWidth=4;x.strokeStyle='rgba(170,205,255,.82)';x.strokeText(text,256,250);
+  if(n===6||n===9){x.fillStyle='#eef5ff';x.fillRect(207,367,98,9)}
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=renderer.capabilities.getMaxAnisotropy();return t;
 }
 
-// Solid sapphire core
-const solidPos=[];
-for(const f of faces){
-  for(const vi of f) solidPos.push(...verts[vi]);
+function faceQuaternion(normal){
+  const n=normal.clone().normalize();let reference=new THREE.Vector3(0,1,0);if(Math.abs(n.dot(reference))>.92)reference=new THREE.Vector3(0,0,1);
+  const up=reference.clone().addScaledVector(n,-reference.dot(n)).normalize();const right=new THREE.Vector3().crossVectors(up,n).normalize();up.crossVectors(n,right).normalize();
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(right,up,n));
 }
 
-const solidGeo=new THREE.BufferGeometry();
-solidGeo.setAttribute('position',new THREE.Float32BufferAttribute(solidPos,3));
-solidGeo.computeVertexNormals();
-
-const solidMat=new THREE.MeshPhysicalMaterial({
-  color:0x17467f,
-  roughness:.25,
-  metalness:.14,
-  clearcoat:1,
-  clearcoatRoughness:.14,
-  transmission:.05,
-  thickness:.5,
-  ior:1.45,
-  reflectivity:.6,
-  flatShading:true,
-  emissive:0x0a2b58,
-  emissiveIntensity:.42
-});
-
-const solid=new THREE.Mesh(solidGeo,solidMat);
-solid.castShadow=true;
-solid.receiveShadow=true;
-
-// Inner magical crystal
-const inner=new THREE.Mesh(
-  new THREE.IcosahedronGeometry(R*.88,0),
-  new THREE.MeshPhysicalMaterial({
-    color:0x1d4e8f,
-    transparent:true,
-    opacity:.28,
-    roughness:.08,
-    metalness:.08,
-    transmission:.28,
-    thickness:.8,
-    emissive:0x0b2d66,
-    emissiveIntensity:.55,
-    depthWrite:false
-  })
-);
-
-// v0.3.2: front-facing number planes.
-// The previous triangular UV decals could be viewed from their back side,
-// which made some digits look mirrored. These planes have a defined outward
-// normal and render FRONT SIDE ONLY, so every number reads normally.
-const decals=new THREE.Group();
-
-function faceNumberQuaternion(normal){
-  const n=normal.clone().normalize();
-
-  // Pick a stable "up" reference, projected onto this triangular face.
-  // Local Y of each number points as closely as possible toward die-local +Y.
-  let reference=new THREE.Vector3(0,1,0);
-  if(Math.abs(n.dot(reference))>.92){
-    reference=new THREE.Vector3(0,0,1);
-  }
-
-  const up=reference.clone()
-    .addScaledVector(n,-reference.dot(n))
-    .normalize();
-
-  const right=new THREE.Vector3()
-    .crossVectors(up,n)
-    .normalize();
-
-  // Rebuild up to guarantee an orthonormal right/up/normal basis.
-  up.crossVectors(n,right).normalize();
-
-  const basis=new THREE.Matrix4().makeBasis(right,up,n);
-  return new THREE.Quaternion().setFromRotationMatrix(basis);
+function buildRenderGeometry(vertices,faces){
+  const pos=[];
+  for(const face of faces){for(let i=1;i<face.length-1;i++) pos.push(...vertices[face[0]],...vertices[face[i]],...vertices[face[i+1]]);}
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.computeVertexNormals();return geo;
 }
 
-for(let fi=0;fi<20;fi++){
-  const f=faces[fi];
-  const fv=f.map(i=>new THREE.Vector3(...verts[i]));
-  const center=fv[0].clone().add(fv[1]).add(fv[2]).multiplyScalar(1/3);
-  const normal=normals[fi];
-
-  const g=new THREE.PlaneGeometry(1.18,1.18);
-  const m=new THREE.MeshBasicMaterial({
-    map:numberTexture(numbers[fi]),
-    transparent:true,
-    depthWrite:false,
-    depthTest:true,
-    polygonOffset:true,
-    polygonOffsetFactor:-2,
-    polygonOffsetUnits:-2,
-    side:THREE.FrontSide
+function createPhysicalDie(type,valuesOverride=null,scale=.98){
+  const spec=polyFor(type);const vertices=spec.vertices.map(v=>v.map(n=>n*scale));const faces=spec.faces.map(f=>f.slice());const normals=faceNormals(vertices,faces);
+  const values=valuesOverride||spec.values;
+  const solidGeo=buildRenderGeometry(vertices,faces);
+  const solid=new THREE.Mesh(solidGeo,new THREE.MeshPhysicalMaterial({color:0x17467f,roughness:.25,metalness:.14,clearcoat:1,clearcoatRoughness:.14,transmission:.05,thickness:.5,ior:1.45,reflectivity:.6,flatShading:true,emissive:0x0a2b58,emissiveIntensity:.42}));
+  solid.castShadow=true;solid.receiveShadow=true;
+  const decals=new THREE.Group();
+  faces.forEach((face,fi)=>{
+    const center=face.reduce((a,i)=>a.add(new THREE.Vector3(...vertices[i])),new THREE.Vector3()).multiplyScalar(1/face.length);const normal=normals[fi];
+    const g=new THREE.PlaneGeometry(spec.labelSize*scale,spec.labelSize*scale);
+    const m=new THREE.MeshBasicMaterial({map:numberTexture(values[fi]),transparent:true,depthWrite:false,depthTest:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,side:THREE.FrontSide});
+    const decal=new THREE.Mesh(g,m);decal.position.copy(center).addScaledVector(normal,.018);decal.quaternion.copy(faceQuaternion(normal));decals.add(decal);
   });
-
-  const decal=new THREE.Mesh(g,m);
-  decal.position.copy(center).addScaledVector(normal,.018);
-  decal.quaternion.copy(faceNumberQuaternion(normal));
-
-  decals.add(decal);
+  const edges=new THREE.LineSegments(new THREE.EdgesGeometry(solidGeo,12),new THREE.LineBasicMaterial({color:0xa8c7f2,transparent:true,opacity:.5}));
+  const group=new THREE.Group();group.add(solid,decals,edges);scene.add(group);
+  const shape=new CANNON.ConvexPolyhedron({vertices:vertices.map(v=>new CANNON.Vec3(...v)),faces});
+  const body=new CANNON.Body({mass:1.15,material:diceMat,shape,linearDamping:.13,angularDamping:.11,allowSleep:true,sleepSpeedLimit:.13,sleepTimeLimit:.8});world.addBody(body);
+  return {type,mesh:group,body,normals,values};
 }
 
-// Polished edge highlights
-const edges=new THREE.LineSegments(
-  new THREE.EdgesGeometry(solidGeo,12),
-  new THREE.LineBasicMaterial({
-    color:0xa8c7f2,
-    transparent:true,
-    opacity:.5
-  })
-);
-
-// Tiny internal magical specks
-const sparkCount=42;
-const sparkArr=new Float32Array(sparkCount*3);
-for(let i=0;i<sparkCount;i++){
-  const v=new THREE.Vector3(
-    Math.random()*2-1,
-    Math.random()*2-1,
-    Math.random()*2-1
-  ).normalize().multiplyScalar(.18+Math.random()*R*.58);
-
-  sparkArr[i*3]=v.x;
-  sparkArr[i*3+1]=v.y;
-  sparkArr[i*3+2]=v.z;
+function disposeDie(inst){
+  world.removeBody(inst.body);scene.remove(inst.mesh);
+  inst.mesh.traverse(o=>{if(o.geometry)o.geometry.dispose?.();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>{m.map?.dispose?.();m.dispose?.();});}});
 }
-const sparkGeo=new THREE.BufferGeometry();
-sparkGeo.setAttribute('position',new THREE.BufferAttribute(sparkArr,3));
-const sparks=new THREE.Points(
-  sparkGeo,
-  new THREE.PointsMaterial({
-    color:0xa7c8ff,
-    size:.032,
-    transparent:true,
-    opacity:.7,
-    depthWrite:false
-  })
-);
 
-const mesh=new THREE.Group();
-mesh.add(solid,inner,decals,edges,sparks);
-mesh.userData.sparks=sparks;
-scene.add(mesh);
-
-const halo=new THREE.Mesh(
-  new THREE.CircleGeometry(1.95,64),
-  new THREE.MeshBasicMaterial({color:0x2b66b5,transparent:true,opacity:.10,depthWrite:false})
-);
-halo.rotation.x=-Math.PI/2;
-halo.position.y=.035;
-scene.add(halo);
-
-
-
-// v0.3: tall invisible safety walls. These exist only in Cannon physics,
-// so players never see them, but even a violent d20 throw stays in the tray.
-function invisibleWall(x,y,z,sx,sy,sz){
-  const b=new CANNON.Body({
-    type:CANNON.Body.STATIC,
-    material:trayMat,
-    shape:new CANNON.Box(new CANNON.Vec3(sx/2,sy/2,sz/2))
-  });
-  b.position.set(x,y,z);
-  world.addBody(b);
+function setActiveDice(type="d20"){
+  if(rolling) return;
+  if(activeDieType===type && activeDice.length) return;
+  activeDice.forEach(disposeDie);activeDice=[];activeDieType=type;
+  if(type==="d100"){
+    activeDice.push(createPhysicalDie("d10",[0,10,20,30,40,50,60,70,80,90],.86));
+    activeDice.push(createPhysicalDie("d10",[0,1,2,3,4,5,6,7,8,9],.86));
+    activeDice[0].mesh.position.x=-1.2;activeDice[1].mesh.position.x=1.2;
+    activeDice[0].body.position.set(-1.2,2.6,0);activeDice[1].body.position.set(1.2,2.6,0);
+  }else{
+    activeDice.push(createPhysicalDie(type));activeDice[0].body.position.set(0,2.6,0);
+  }
+  activeDice.forEach((d,i)=>d.body.quaternion.setFromEuler(.25+i*.2,.75+i*.35,.15));
 }
-const SAFE_H=7, SAFE_T=.35, SAFE_Y=SAFE_H/2;
-invisibleWall(0,SAFE_Y,-(D/2-.08),W,SAFE_H,SAFE_T);
-invisibleWall(0,SAFE_Y, (D/2-.08),W,SAFE_H,SAFE_T);
-invisibleWall(-(W/2-.08),SAFE_Y,0,SAFE_T,SAFE_H,D);
-invisibleWall( (W/2-.08),SAFE_Y,0,SAFE_T,SAFE_H,D);
 
-const shape=new CANNON.ConvexPolyhedron({vertices:verts.map(v=>new CANNON.Vec3(...v)),faces:faces.map(f=>[...f])});
-const body=new CANNON.Body({mass:1.15,material:diceMat,shape,linearDamping:.13,angularDamping:.11,allowSleep:true,sleepSpeedLimit:.13,sleepTimeLimit:.8});world.addBody(body);
-const UP=new THREE.Vector3(0,1,0);let rolling=false,settle=0,start=0,focusResult=false;const defaultCam=new THREE.Vector3(0,8.6,12.5);const focusCam=new THREE.Vector3(0,8.5,5.5);const lookTarget=new THREE.Vector3(0,.7,0);
-function top(){const q=new THREE.Quaternion(body.quaternion.x,body.quaternion.y,body.quaternion.z,body.quaternion.w);let idx=0,best=-Infinity;normals.forEach((n,i)=>{const d=n.clone().applyQuaternion(q).dot(UP);if(d>best){best=d;idx=i}});return{number:numbers[idx],faceIndex:idx,confidence:best}}
+function readDie(inst){
+  const q=new THREE.Quaternion(inst.body.quaternion.x,inst.body.quaternion.y,inst.body.quaternion.z,inst.body.quaternion.w);let idx=0,best=-Infinity;
+  inst.normals.forEach((n,i)=>{const d=n.clone().applyQuaternion(q).dot(UP);if(d>best){best=d;idx=i}});
+  return {number:inst.values[idx],faceIndex:idx,confidence:best};
+}
+function top(){return readDie(activeDice[0]);}
 function flash(cls){burst.className='';void burst.offsetWidth;burst.className=cls;setTimeout(()=>burst.className='',1000)}
 function finish(){
-  if(!rolling)return;
-  const physical=top();
-  rolling=false;
-  focusResult=true;
-
+  if(!rolling)return;rolling=false;focusResult=true;
   if(adminTestMode){
-    const tested=randomAdminResult(selectedAdminDie);
-    resultEl.textContent=tested.result;
-    button.disabled=false;
-    button.innerHTML=`<span>🎲</span> TEST LOCAL ${selectedAdminDie.toUpperCase()} AGAIN`;
-    status.textContent="ADMIN RESULT";
-    subtitle.textContent=`${selectedAdminDie.toUpperCase()} • ${tested.detail} • campaign submission OFF`;
-    showInputProof("ADMIN TEST FINISHED",`${selectedAdminDie}=${tested.result}`);
-    if(selectedAdminDie==="d20" && tested.result===20) flash('nat20');
-    if(selectedAdminDie==="d20" && tested.result===1) flash('nat1');
-    window.dispatchEvent(new CustomEvent('mixer-dice-test-result',{
-      detail:{die:selectedAdminDie,result:tested.result,localOnly:true,physicalD20Face:physical.number}
-    }));
-    return;
-  }
-
-  const r=physical;
-  resultEl.textContent=r.number;
-  button.disabled=true;
-  button.innerHTML='<span>🎲</span> READING RESULT...';
-  if(r.number===20){subtitle.textContent='NATURAL 20!';status.textContent='NAT 20';flash('nat20')}
-  else if(r.number===1){subtitle.textContent='NATURAL 1!';status.textContent='NAT 1';flash('nat1')}
-  else{subtitle.textContent=`Physics result • confidence ${(r.confidence*100).toFixed(1)}%`;status.textContent='RESULT'}
-  console.log('[Mixer Dice]',r);
-  showInputProof("PHYSICS FINISHED",`result=${r.number}`);
-  window.dispatchEvent(new CustomEvent('mixer-dice-result',{
-    detail:{die:'d20',result:r.number,faceIndex:r.faceIndex,confidence:r.confidence}
-  }));
-
-  if(isDiscordActivity && pendingRoll && activitySetupComplete){
-    const mode=currentRollMode();
-    if(mode!=="normal"){
-      modeRollResults.push(r.number);
-      if(modeRollResults.length===1){
-        const first=modeRollResults[0];
-        status.textContent="ROLL 1 OF 2";
-        resultEl.textContent=first;
-        subtitle.textContent=`${modeEmoji(mode)} ${modeLabel(mode)} • First roll: ${first}. Roll one more time.`;
-        connectionStage.textContent=`${modeLabel(mode)} • FIRST ROLL COMPLETE`;
-        connectionDetail.textContent=`First physical d20: ${first}. ${mode==="advantage"?"The higher":"The lower"} result will count.`;
-        button.disabled=false;
-        button.innerHTML='<span>🎲</span> ROLL SECOND D20';
-        return;
-      }
-      const rolls=modeRollResults.slice(0,2);
-      const kept=chooseKeptResult(mode,rolls);
-      resultEl.textContent=kept;
-      subtitle.textContent=`${modeEmoji(mode)} ${modeLabel(mode)} • Rolls ${rolls[0]} & ${rolls[1]} • Kept ${kept}`;
-      status.textContent="RESULT";
-      submitActivityRoll(kept,rolls);
-      return;
+    if(selectedAdminDie==="d100"){
+      const tens=readDie(activeDice[0]),ones=readDie(activeDice[1]);const result=(tens.number===0&&ones.number===0)?100:tens.number+ones.number;
+      resultEl.textContent=result;button.disabled=false;button.innerHTML='<span>🎲</span> TEST LOCAL D100 AGAIN';status.textContent="ADMIN RESULT";
+      subtitle.textContent=`D100 • percentile ${String(tens.number).padStart(2,"0")} + ${ones.number} • campaign submission OFF`;
+      showInputProof("ADMIN TEST FINISHED",`d100=${result}`);
+      window.dispatchEvent(new CustomEvent('mixer-dice-test-result',{detail:{die:'d100',result,tens:tens.number,ones:ones.number,localOnly:true}}));return;
     }
-    modeRollResults=[r.number];
-    submitActivityRoll(r.number,[r.number]);
-  }else{
-    button.disabled=false;
-    button.innerHTML='<span>🎲</span> ROLL AGAIN';
-    if(isDiscordActivity){
-      connectionStage.textContent="LOCAL ROLL WORKED";
-      connectionDetail.textContent="The physical d20 rolled successfully. Discord did not have a verified pending roll to receive it.";
-    }
+    const r=readDie(activeDice[0]);resultEl.textContent=r.number;button.disabled=false;button.innerHTML=`<span>🎲</span> TEST LOCAL ${selectedAdminDie.toUpperCase()} AGAIN`;status.textContent="ADMIN RESULT";
+    subtitle.textContent=`${selectedAdminDie.toUpperCase()} • physical top-face result • confidence ${(r.confidence*100).toFixed(1)}% • campaign submission OFF`;
+    showInputProof("ADMIN TEST FINISHED",`${selectedAdminDie}=${r.number}`);if(selectedAdminDie==="d20"&&r.number===20)flash('nat20');if(selectedAdminDie==="d20"&&r.number===1)flash('nat1');
+    window.dispatchEvent(new CustomEvent('mixer-dice-test-result',{detail:{die:selectedAdminDie,result:r.number,faceIndex:r.faceIndex,confidence:r.confidence,localOnly:true}}));return;
   }
+  const r=readDie(activeDice[0]);resultEl.textContent=r.number;button.disabled=true;button.innerHTML='<span>🎲</span> READING RESULT...';
+  if(r.number===20){subtitle.textContent='NATURAL 20!';status.textContent='NAT 20';flash('nat20')}else if(r.number===1){subtitle.textContent='NATURAL 1!';status.textContent='NAT 1';flash('nat1')}else{subtitle.textContent=`Physics result • confidence ${(r.confidence*100).toFixed(1)}%`;status.textContent='RESULT'}
+  showInputProof("PHYSICS FINISHED",`result=${r.number}`);window.dispatchEvent(new CustomEvent('mixer-dice-result',{detail:{die:'d20',result:r.number,faceIndex:r.faceIndex,confidence:r.confidence}}));
+  if(isDiscordActivity&&pendingRoll&&activitySetupComplete){const mode=currentRollMode();if(mode!=="normal"){modeRollResults.push(r.number);if(modeRollResults.length===1){const first=modeRollResults[0];status.textContent="ROLL 1 OF 2";resultEl.textContent=first;subtitle.textContent=`${modeEmoji(mode)} ${modeLabel(mode)} • First roll: ${first}. Roll one more time.`;connectionStage.textContent=`${modeLabel(mode)} • FIRST ROLL COMPLETE`;connectionDetail.textContent=`First physical d20: ${first}. ${mode==="advantage"?"The higher":"The lower"} result will count.`;button.disabled=false;button.innerHTML='<span>🎲</span> ROLL SECOND D20';return}const rolls=modeRollResults.slice(0,2),kept=chooseKeptResult(mode,rolls);resultEl.textContent=kept;subtitle.textContent=`${modeEmoji(mode)} ${modeLabel(mode)} • Rolls ${rolls[0]} & ${rolls[1]} • Kept ${kept}`;status.textContent="RESULT";submitActivityRoll(kept,rolls);return}modeRollResults=[r.number];submitActivityRoll(r.number,[r.number])}else{button.disabled=false;button.innerHTML='<span>🎲</span> ROLL AGAIN';if(isDiscordActivity){connectionStage.textContent="LOCAL ROLL WORKED";connectionDetail.textContent="The physical d20 rolled successfully. Discord did not have a verified pending roll to receive it."}}
 }
 const rnd=(a,b)=>a+Math.random()*(b-a);
 function roll(source="unknown"){
-  showInputProof("ROLL REQUEST",source);
-
-  if(rolling){
-    showRollBlocked("die is already rolling");
-    return false;
-  }
-
-  // v0.5: local physics is intentionally independent from Discord.
-  rolling=true;
-  focusResult=false;
-  settle=0;
-  start=performance.now();
-
-  resultEl.textContent='…';
-  const launchDie=adminTestMode?selectedAdminDie.toUpperCase():'D20';
-  subtitle.textContent=`INPUT RECEIVED — ${launchDie} test throw is launching.`;
-  status.textContent='ROLLING';
-  button.disabled=true;
-  button.innerHTML='<span>🎲</span> ROLLING...';
-
-  const left=Math.random()>.5;
-
-  body.position.set(
-    left?-3.8:3.8,
-    rnd(4.5,6.3),
-    rnd(-1.8,1.8)
-  );
-
-  body.velocity.set(
-    left?rnd(5.8,8.8):rnd(-8.8,-5.8),
-    rnd(.3,2.2),
-    rnd(-4.8,4.8)
-  );
-
-  body.angularVelocity.set(
-    rnd(-18,18),
-    rnd(-22,22),
-    rnd(-18,18)
-  );
-
-  body.quaternion.setFromEuler(
-    Math.random()*6.28,
-    Math.random()*6.28,
-    Math.random()*6.28,
-    'XYZ'
-  );
-
-  body.wakeUp();
-
-  showInputProof(
-    "PHYSICS STARTED",
-    `v=${body.velocity.length().toFixed(2)} w=${body.angularVelocity.length().toFixed(2)}`
-  );
-
-  return true;
+  showInputProof("ROLL REQUEST",source);if(rolling){showRollBlocked("die is already rolling");return false}rolling=true;focusResult=false;settle=0;start=performance.now();resultEl.textContent='…';const launchDie=adminTestMode?selectedAdminDie.toUpperCase():'D20';subtitle.textContent=`INPUT RECEIVED — ${launchDie} physical throw is launching.`;status.textContent='ROLLING';button.disabled=true;button.innerHTML='<span>🎲</span> ROLLING...';
+  activeDice.forEach((d,i)=>{const left=(i===0?Math.random()>.5:Math.random()<=.5);const spread=activeDice.length>1?(i===0?-1.1:1.1):0;d.body.position.set((left?-3.6:3.6)+spread,rnd(4.7,6.5),rnd(-1.7,1.7));d.body.velocity.set(left?rnd(5.8,8.4):rnd(-8.4,-5.8),rnd(.4,2.4),rnd(-4.6,4.6));d.body.angularVelocity.set(rnd(-18,18),rnd(-22,22),rnd(-18,18));d.body.quaternion.setFromEuler(Math.random()*6.28,Math.random()*6.28,Math.random()*6.28,'XYZ');d.body.wakeUp();});
+  showInputProof("PHYSICS STARTED",`${activeDice.length} die/dice • ${activeDieType}`);return true;
 }
 
 function requestPhysicalRoll(event,source){
@@ -1055,16 +924,13 @@ retryButton.addEventListener("click",async(event)=>{
 
 const clock=new THREE.Clock();let acc=0;const step=1/120;
 function resize(){renderer.setSize(host.clientWidth,host.clientHeight,false);camera.aspect=host.clientWidth/Math.max(1,host.clientHeight);camera.updateProjectionMatrix()}new ResizeObserver(resize).observe(host);resize();
-function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.05);acc+=dt;let n=0;while(acc>=step&&n<8){world.step(step);acc-=step;n++}mesh.position.set(body.position.x,body.position.y,body.position.z);mesh.quaternion.set(body.quaternion.x,body.quaternion.y,body.quaternion.z,body.quaternion.w);if(rolling){const elapsed=performance.now()-start;if(body.velocity.length()<.16&&body.angularVelocity.length()<.18&&elapsed>800)settle+=dt;else settle=0;if(settle>.72){const r=top();if(r.confidence>.91||elapsed>9000)finish()}if(elapsed>12000)finish()}
-if(mesh.userData.sparks){mesh.userData.sparks.rotation.y+=dt*.35;mesh.userData.sparks.rotation.x+=dt*.12;}halo.position.x=body.position.x;halo.position.z=body.position.z;halo.material.opacity=.09+Math.sin(performance.now()*.0025)*.02;
-const desired=focusResult?focusCam:defaultCam;
-camera.position.lerp(desired,1-Math.pow(.001,dt));
-const target=focusResult?new THREE.Vector3(body.position.x,Math.max(.8,body.position.y+.15),body.position.z):new THREE.Vector3(0,.7,0);
-lookTarget.lerp(target,1-Math.pow(.0025,dt));
-camera.lookAt(lookTarget);
-renderer.render(scene,camera)}
-body.position.set(0,2.6,0);body.quaternion.setFromEuler(.3,.8,.15);loop();
-console.log('[Mixer Dice] v0.5.4 admin test mode ready');
+function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.05);acc+=dt;let n=0;while(acc>=step&&n<8){world.step(step);acc-=step;n++}
+  activeDice.forEach(d=>{d.mesh.position.set(d.body.position.x,d.body.position.y,d.body.position.z);d.mesh.quaternion.set(d.body.quaternion.x,d.body.quaternion.y,d.body.quaternion.z,d.body.quaternion.w)});
+  if(rolling){const elapsed=performance.now()-start;const settled=activeDice.every(d=>d.body.velocity.length()<.18&&d.body.angularVelocity.length()<.2);if(settled&&elapsed>900)settle+=dt;else settle=0;if(settle>.78||elapsed>12000)finish()}
+  const avg=activeDice.length?activeDice.reduce((a,d)=>a.add(new THREE.Vector3(d.body.position.x,d.body.position.y,d.body.position.z)),new THREE.Vector3()).multiplyScalar(1/activeDice.length):new THREE.Vector3();halo.position.x=avg.x;halo.position.z=avg.z;halo.material.opacity=.09+Math.sin(performance.now()*.0025)*.02;
+  const desired=focusResult?focusCam:defaultCam;camera.position.lerp(desired,1-Math.pow(.001,dt));const target=focusResult?new THREE.Vector3(avg.x,Math.max(.8,avg.y+.15),avg.z):new THREE.Vector3(0,.7,0);lookTarget.lerp(target,1-Math.pow(.0025,dt));camera.lookAt(lookTarget);renderer.render(scene,camera)}
+setActiveDice("d20");loop();
+console.log('[Mixer Dice] v0.6.0 full physical dice set ready');
 
 // Lock the control before the first browser paint in Discord Activity mode.
 if(isDiscordActivity){
