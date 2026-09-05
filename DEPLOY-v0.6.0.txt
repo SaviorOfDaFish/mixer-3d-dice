@@ -1,0 +1,7 @@
+Mixer 3D Dice v0.6.0 — Full Physical Dice Set
+
+Railway variable required for Admin Test Mode:
+DICE_ADMIN_PASSWORD=Mixer12!
+
+Deploy this folder/repo to the existing Mixer 3D Dice Railway service.
+Admin mode physically swaps D4/D6/D8/D10/D12/D20 meshes and bodies. D100 throws two D10s.
