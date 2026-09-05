@@ -1,3 +1,11 @@
+# Mixer Dice Table v0.6.3 — True D10 / Percentile Dice
+
+- Rebuilt D10 as a true pentagonal trapezohedron with 10 kite faces.
+- D100 uses two true D10 bodies.
+- Percentile die faces are labeled 10, 20, 30, 40, 50, 60, 70, 80, 90, 100.
+- Ones die faces are labeled 0 through 9.
+- 100 on the tens die functions as 00 for percentile math; 100 + 0 = 100.
+
 # Mixer Dice Table v0.4 — Discord Activity
 
 This build keeps the v0.3.2 physics/visual d20 and adds Discord Activity integration.
