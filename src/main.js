@@ -536,6 +536,28 @@ world.addContactMaterial(new CANNON.ContactMaterial(diceMat,trayMat,{friction:.3
 const W=12,D=8.2,WH=1,WT=.45;
 function staticBox(x,y,z,sx,sy,sz,color=0x241b17){const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),new THREE.MeshStandardMaterial({color,roughness:.9}));m.position.set(x,y,z);m.receiveShadow=true;m.castShadow=true;scene.add(m);const b=new CANNON.Body({type:CANNON.Body.STATIC,material:trayMat,shape:new CANNON.Box(new CANNON.Vec3(sx/2,sy/2,sz/2))});b.position.set(x,y,z);world.addBody(b)}
 staticBox(0,-.3,0,W,.6,D,0x151a20); staticBox(0,WH/2,-(D/2+WT/2),W+WT*2,WH,WT); staticBox(0,WH/2,D/2+WT/2,W+WT*2,WH,WT); staticBox(-(W/2+WT/2),WH/2,0,WT,WH,D); staticBox(W/2+WT/2,WH/2,0,WT,WH,D);
+
+// v0.6.4 containment cage: tall PHYSICS-ONLY walls sit directly above the
+// visible tray rim. They are intentionally not rendered, so dice can bounce
+// high without ever escaping the box or appearing to hit an extra wall.
+function invisiblePhysicsBox(x,y,z,sx,sy,sz){
+  const body=new CANNON.Body({
+    type:CANNON.Body.STATIC,
+    material:trayMat,
+    shape:new CANNON.Box(new CANNON.Vec3(sx/2,sy/2,sz/2))
+  });
+  body.position.set(x,y,z);
+  world.addBody(body);
+  return body;
+}
+const SAFETY_WALL_HEIGHT=10;
+const SAFETY_WALL_Y=SAFETY_WALL_HEIGHT/2;
+const SAFETY_THICKNESS=.72;
+invisiblePhysicsBox(0,SAFETY_WALL_Y,-(D/2+WT/2),W+WT*2,SAFETY_WALL_HEIGHT,SAFETY_THICKNESS);
+invisiblePhysicsBox(0,SAFETY_WALL_Y, D/2+WT/2,W+WT*2,SAFETY_WALL_HEIGHT,SAFETY_THICKNESS);
+invisiblePhysicsBox(-(W/2+WT/2),SAFETY_WALL_Y,0,SAFETY_THICKNESS,SAFETY_WALL_HEIGHT,D+WT*2);
+invisiblePhysicsBox( W/2+WT/2,SAFETY_WALL_Y,0,SAFETY_THICKNESS,SAFETY_WALL_HEIGHT,D+WT*2);
+
 const felt=new THREE.Mesh(new THREE.PlaneGeometry(W-.65,D-.65),new THREE.MeshStandardMaterial({color:0x101c20,roughness:1})); felt.rotation.x=-Math.PI/2; felt.position.y=.012; felt.receiveShadow=true; scene.add(felt);
 const grid=new THREE.GridHelper(10,20,0x243a48,0x17242d);grid.position.y=.02;grid.material.transparent=true;grid.material.opacity=.26;scene.add(grid);
 
