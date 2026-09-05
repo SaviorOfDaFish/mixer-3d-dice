@@ -192,3 +192,12 @@ Admin Test Mode now swaps the actual 3D geometry and Cannon physics body for D4,
 - Safety walls are physics-only and never render over the table art.
 - Added a dark arcane/cosmic full-page backdrop behind the 3D table and UI.
 - Preserves v0.6.3 true D10 geometry and D100 percentile pair.
+
+
+## v0.6.5 — Top-down D100 + supplied background
+- Result camera moves to a true bird's-eye view centered over the entire tray so both percentile dice stay visible after settling.
+- Top-down camera height is calculated from the tray size and current aspect ratio so the whole table fits on screen.
+- D100 now uses traditional percentile faces: tens die `00,10,20,30,40,50,60,70,80,90` plus ones die `0-9`.
+- `00 + 0` resolves to 100; all other combinations resolve normally (for example `70 + 8 = 78`).
+- Uses the supplied purple/orange monster-hunt image as the full-page background.
+- Existing tall invisible containment cage remains enabled around all four tray sides.
