@@ -644,22 +644,29 @@ function makeD8(){
 }
 
 function makeD10(){
-  const top=[],bottom=[],h=.62;
+  // A true 10-face pentagonal trapezohedron (the familiar RPG d10 silhouette).
+  // We build it as the dual of a pentagonal antiprism, then stretch the polar
+  // axis slightly so it reads clearly as a d10 instead of a rounded d12/d20.
+  const top=[],bottom=[],h=.58;
   for(let i=0;i<5;i++){
     const a=2*Math.PI*i/5;
     top.push([Math.cos(a),h,Math.sin(a)]);
     const b=a+Math.PI/5;
     bottom.push([Math.cos(b),-h,Math.sin(b)]);
   }
-  const vertices=[...top,...bottom];
-  const faces=[[0,1,2,3,4],[9,8,7,6,5]];
+  const antiprismVertices=[...top,...bottom];
+  const antiprismFaces=[[0,1,2,3,4],[9,8,7,6,5]];
   for(let i=0;i<5;i++){
     const ni=(i+1)%5,pi=(i+4)%5;
-    faces.push([i,5+i,5+pi]);
-    faces.push([i,ni,5+i]);
+    antiprismFaces.push([i,5+i,5+pi]);
+    antiprismFaces.push([i,ni,5+i]);
   }
-  const dual=dualPolyhedron(vertices,faces,R);
-  return {...dual,values:[0,1,2,3,4,5,6,7,8,9],labelSize:.82};
+  const dual=dualPolyhedron(antiprismVertices,antiprismFaces,R);
+
+  // Classic d10 proportions: taller pointed ends and a slightly slimmer waist.
+  const stretched=dual.vertices.map(([x,y,z])=>[x*.88,y*1.34,z*.88]);
+  const faces=orientFaces(stretched,dual.faces);
+  return {vertices:stretched,faces,values:[0,1,2,3,4,5,6,7,8,9],labelSize:.72};
 }
 
 function makeD12(){
@@ -729,7 +736,9 @@ function setActiveDice(type="d20"){
   if(activeDieType===type && activeDice.length) return;
   activeDice.forEach(disposeDie);activeDice=[];activeDieType=type;
   if(type==="d100"){
-    activeDice.push(createPhysicalDie("d10",[0,10,20,30,40,50,60,70,80,90],.86));
+    // Percentile pair: the tens die is visibly labeled 10-100, while 100
+    // represents the traditional 00 face for percentile math.
+    activeDice.push(createPhysicalDie("d10",[10,20,30,40,50,60,70,80,90,100],.86));
     activeDice.push(createPhysicalDie("d10",[0,1,2,3,4,5,6,7,8,9],.86));
     activeDice[0].mesh.position.x=-1.2;activeDice[1].mesh.position.x=1.2;
     activeDice[0].body.position.set(-1.2,2.6,0);activeDice[1].body.position.set(1.2,2.6,0);
@@ -750,9 +759,12 @@ function finish(){
   if(!rolling)return;rolling=false;focusResult=true;
   if(adminTestMode){
     if(selectedAdminDie==="d100"){
-      const tens=readDie(activeDice[0]),ones=readDie(activeDice[1]);const result=(tens.number===0&&ones.number===0)?100:tens.number+ones.number;
+      const tens=readDie(activeDice[0]),ones=readDie(activeDice[1]);
+      const tensBase=tens.number===100?0:tens.number;
+      const result=(tens.number===100&&ones.number===0)?100:tensBase+ones.number;
       resultEl.textContent=result;button.disabled=false;button.innerHTML='<span>🎲</span> TEST LOCAL D100 AGAIN';status.textContent="ADMIN RESULT";
-      subtitle.textContent=`D100 • percentile ${String(tens.number).padStart(2,"0")} + ${ones.number} • campaign submission OFF`;
+      const tensDisplay=tens.number===100?"100 (00)":String(tens.number);
+      subtitle.textContent=`D100 • percentile ${tensDisplay} + ${ones.number} • campaign submission OFF`;
       showInputProof("ADMIN TEST FINISHED",`d100=${result}`);
       window.dispatchEvent(new CustomEvent('mixer-dice-test-result',{detail:{die:'d100',result,tens:tens.number,ones:ones.number,localOnly:true}}));return;
     }
