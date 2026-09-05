@@ -644,29 +644,40 @@ function makeD8(){
 }
 
 function makeD10(){
-  // A true 10-face pentagonal trapezohedron (the familiar RPG d10 silhouette).
-  // We build it as the dual of a pentagonal antiprism, then stretch the polar
-  // axis slightly so it reads clearly as a d10 instead of a rounded d12/d20.
-  const top=[],bottom=[],h=.58;
+  // Classic RPG d10: a pentagonal trapezohedron with 10 true kite faces.
+  // Two staggered pentagonal rings sit close to the waist, with pointed
+  // north/south poles. Each result corresponds to one complete kite face.
+  const waistY=.16;
+  const poleY=waistY*(5+2*Math.sqrt(5)); // ~= 9.472 * waistY; keeps each kite planar
+  const ringRadius=1;
+  const raw=[];
+
+  // Upper pentagon.
   for(let i=0;i<5;i++){
     const a=2*Math.PI*i/5;
-    top.push([Math.cos(a),h,Math.sin(a)]);
-    const b=a+Math.PI/5;
-    bottom.push([Math.cos(b),-h,Math.sin(b)]);
+    raw.push([ringRadius*Math.cos(a),waistY,ringRadius*Math.sin(a)]);
   }
-  const antiprismVertices=[...top,...bottom];
-  const antiprismFaces=[[0,1,2,3,4],[9,8,7,6,5]];
+  // Lower pentagon, rotated 36 degrees.
   for(let i=0;i<5;i++){
-    const ni=(i+1)%5,pi=(i+4)%5;
-    antiprismFaces.push([i,5+i,5+pi]);
-    antiprismFaces.push([i,ni,5+i]);
+    const a=2*Math.PI*i/5+Math.PI/5;
+    raw.push([ringRadius*Math.cos(a),-waistY,ringRadius*Math.sin(a)]);
   }
-  const dual=dualPolyhedron(antiprismVertices,antiprismFaces,R);
 
-  // Classic d10 proportions: taller pointed ends and a slightly slimmer waist.
-  const stretched=dual.vertices.map(([x,y,z])=>[x*.88,y*1.34,z*.88]);
-  const faces=orientFaces(stretched,dual.faces);
-  return {vertices:stretched,faces,values:[0,1,2,3,4,5,6,7,8,9],labelSize:.72};
+  const TOP=10,BOTTOM=11;
+  raw.push([0,poleY,0],[0,-poleY,0]);
+
+  const rawFaces=[];
+  for(let i=0;i<5;i++){
+    const next=(i+1)%5;
+    rawFaces.push([TOP,i,5+i,next]);
+    rawFaces.push([BOTTOM,5+i,next,5+next]);
+  }
+
+  // Slightly wider than the mathematical solid so it reads clearly as the
+  // familiar tabletop d10 while preserving the true kite-face topology.
+  const vertices=scaleVertices(raw,R*1.03).map(([x,y,z])=>[x*1.05,y,z*1.05]);
+  const faces=orientFaces(vertices,rawFaces);
+  return {vertices,faces,values:[0,1,2,3,4,5,6,7,8,9],labelSize:.70};
 }
 
 function makeD12(){
